@@ -1,5 +1,5 @@
 import { api } from 'sdk';
-import { deleteTodo } from '../lib/todos.js';
+import { deleteTodo, markTodoDone } from '../lib/todos.js';
 import {
   getTodoView,
   showTodoDashboard,
@@ -42,6 +42,17 @@ export default async function (callbackQuery, ctx) {
     return;
   }
 
+  if (data === 'todo:complete') {
+    await answer(callbackQuery.id);
+    await showTodoDashboard({
+      userId,
+      chatId,
+      targetMessageId: messageId,
+      mode: TodoViewMode.COMPLETE,
+    });
+    return;
+  }
+
   if (data === 'todo:delete') {
     await answer(callbackQuery.id);
     await showTodoDashboard({
@@ -55,6 +66,30 @@ export default async function (callbackQuery, ctx) {
 
   if (data === 'todo:cancel') {
     await answer(callbackQuery.id);
+    await showTodoDashboard({
+      userId,
+      chatId,
+      targetMessageId: messageId,
+      mode: TodoViewMode.IDLE,
+    });
+    return;
+  }
+
+  if (data === 'todo:noop') {
+    await answer(callbackQuery.id);
+    return;
+  }
+
+  const doneMatch = /^todo:done:(\d+)$/.exec(data);
+  if (doneMatch) {
+    const id = Number(doneMatch[1]);
+    const todo = await markTodoDone(userId, id);
+
+    await answer(
+      callbackQuery.id,
+      todo ? `Завершено: #${todo.id}` : `Задача #${id} уже завершена или отсутствует.`,
+    );
+
     await showTodoDashboard({
       userId,
       chatId,
