@@ -2,11 +2,25 @@ import { api, db } from 'sdk';
 import { and, eq } from 'sdk/db';
 import { todoViews } from '../schema.js';
 import { listTodos } from './todos.js';
+import {
+  ensureLegacySettings,
+  formatDuration,
+  getLegacyExpiry,
+  getOwnerBusinessConnection,
+  getRemainingMs,
+  isLegacyActive,
+  LegacyMode,
+} from './legacy.js';
+
+const SECTION_HOME = 'home';
+const SECTION_TODO = 'todo';
+const SECTION_LEGACY = 'legacy';
 
 const MODE_IDLE = 'idle';
-const MODE_AWAIT_ADD = 'await_add';
-const MODE_COMPLETE = 'complete';
-const MODE_DELETE = 'delete';
+const MODE_TODO_AWAIT_ADD = 'todo_await_add';
+const MODE_TODO_COMPLETE = 'todo_complete';
+const MODE_TODO_DELETE = 'todo_delete';
+const MODE_LEGACY_AWAIT_ACCOUNT = 'legacy_await_account';
 
 function escapeHtml(value) {
   return String(value)
@@ -20,9 +34,83 @@ function compactButtonText(value, max = 42) {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
-function formatDashboard(rows, mode, notice) {
-  const active = rows.filter((todo) => !todo.done);
-  const completed = rows.filter((todo) => todo.done);
+function formatUtc(date) {
+  const value = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(value.getTime())) return '—';
+
+  const two = (n) => String(n).padStart(2, '0');
+  return [
+    two(value.getUTCDate()),
+    two(value.getUTCMonth() + 1),
+    value.getUTCFullYear(),
+  ].join('.') + ` ${two(value.getUTCHours())}:${two(value.getUTCMinutes())} UTC`;
+}
+
+function splitTodos(rows) {
+  return {
+    active: rows.filter((todo) => !todo.done),
+    completed: rows.filter((todo) => todo.done),
+  };
+}
+
+function legacyStateLabel(settings) {
+  if (settings.activationMode === LegacyMode.MANUAL) {
+    return settings.manualActive
+      ? '🔴 автоответ <b>АКТИВЕН</b>'
+      : '🟢 автоответ выключен';
+  }
+
+  if (isLegacyActive(settings)) {
+    return '🔴 срок истёк — dead-man автоответ <b>АКТИВЕН</b>';
+  }
+
+  return `🟢 подтверждено ещё примерно <b>${formatDuration(getRemainingMs(settings))}</b>`;
+}
+
+function connectionLabel(connection) {
+  if (!connection) return '⚪ не подключён';
+  if (!connection.enabled) return '⚫ подключение отключено';
+  if (!connection.canReply) return '🟡 подключён, но нет права <code>can_reply</code>';
+  return '🟢 подключён, ответы разрешены';
+}
+
+function formatHome(rows, settings, connection, notice) {
+  const { active, completed } = splitTodos(rows);
+  const lines = [
+    '<b>REQUIEM // DASHBOARD</b>',
+    '',
+    '<b>Legacy</b>',
+    `Режим: <b>${settings.activationMode === LegacyMode.MANUAL ? 'ручной' : 'dead-man'}</b>`,
+    `Статус: ${legacyStateLabel(settings)}`,
+    `Chat Automation: ${connectionLabel(connection)}`,
+    '',
+    '<b>To-Do</b>',
+    `Активных: <b>${active.length}</b> · Выполнено: <b>${completed.length}</b>`,
+  ];
+
+  if (notice) lines.push('', `<i>${escapeHtml(notice)}</i>`);
+  return lines.join('\n');
+}
+
+function homeKeyboard() {
+  return {
+    inline_keyboard: [[
+      {
+        text: '📋 To-Do',
+        callback_data: 'panel:todo',
+        style: 'primary',
+      },
+      {
+        text: '🕯 Legacy',
+        callback_data: 'panel:legacy',
+        style: 'primary',
+      },
+    ]],
+  };
+}
+
+function formatTodo(rows, mode, notice) {
+  const { active, completed } = splitTodos(rows);
   const lines = ['<b>REQUIEM // TODO</b>', ''];
 
   lines.push('<b>Активные</b>');
@@ -51,29 +139,30 @@ function formatDashboard(rows, mode, notice) {
     lines.push('', `<i>${escapeHtml(notice)}</i>`);
   }
 
-  if (mode === MODE_AWAIT_ADD) {
+  if (mode === MODE_TODO_AWAIT_ADD) {
     lines.push('', '➕ <b>Новая задача</b>', 'Отправь текст задачи следующим сообщением.');
-  } else if (mode === MODE_COMPLETE) {
+  } else if (mode === MODE_TODO_COMPLETE) {
     lines.push('', '✅ <b>Завершение</b>', 'Выбери активную задачу кнопкой ниже.');
-  } else if (mode === MODE_DELETE) {
+  } else if (mode === MODE_TODO_DELETE) {
     lines.push('', '🗑 <b>Удаление</b>', 'Выбери задачу кнопкой ниже.');
   }
 
   return lines.join('\n');
 }
 
-function buildKeyboard(rows, mode) {
-  if (mode === MODE_AWAIT_ADD) {
+function todoKeyboard(rows, mode) {
+  if (mode === MODE_TODO_AWAIT_ADD) {
     return {
-      inline_keyboard: [[
-        { text: '✖ Отмена', callback_data: 'todo:cancel' },
-      ]],
+      inline_keyboard: [
+        [{ text: '✖ Отмена', callback_data: 'todo:cancel' }],
+        [{ text: '↩ Главная', callback_data: 'panel:home' }],
+      ],
     };
   }
 
-  if (mode === MODE_COMPLETE) {
+  if (mode === MODE_TODO_COMPLETE) {
     const active = rows.filter((todo) => !todo.done);
-    const taskButtons = active.slice(0, 20).map((todo) => ([
+    const buttons = active.slice(0, 20).map((todo) => ([
       {
         text: `✅ #${todo.id} ${compactButtonText(todo.text)}`,
         callback_data: `todo:done:${todo.id}`,
@@ -82,20 +171,15 @@ function buildKeyboard(rows, mode) {
     ]));
 
     if (active.length === 0) {
-      taskButtons.push([
-        { text: 'Нет активных задач', callback_data: 'todo:noop' },
-      ]);
+      buttons.push([{ text: 'Нет активных задач', callback_data: 'noop' }]);
     }
 
-    taskButtons.push([
-      { text: '↩ Назад', callback_data: 'todo:cancel' },
-    ]);
-
-    return { inline_keyboard: taskButtons };
+    buttons.push([{ text: '↩ Назад', callback_data: 'todo:cancel' }]);
+    return { inline_keyboard: buttons };
   }
 
-  if (mode === MODE_DELETE) {
-    const taskButtons = rows.slice(0, 20).map((todo) => ([
+  if (mode === MODE_TODO_DELETE) {
+    const buttons = rows.slice(0, 20).map((todo) => ([
       {
         text: `🗑 #${todo.id} ${compactButtonText(todo.text)}`,
         callback_data: `todo:del:${todo.id}`,
@@ -104,56 +188,164 @@ function buildKeyboard(rows, mode) {
     ]));
 
     if (rows.length === 0) {
-      taskButtons.push([
-        { text: 'Задач нет', callback_data: 'todo:noop' },
-      ]);
+      buttons.push([{ text: 'Задач нет', callback_data: 'noop' }]);
     }
 
-    taskButtons.push([
-      { text: '↩ Назад', callback_data: 'todo:cancel' },
-    ]);
-
-    return { inline_keyboard: taskButtons };
+    buttons.push([{ text: '↩ Назад', callback_data: 'todo:cancel' }]);
+    return { inline_keyboard: buttons };
   }
 
   return {
     inline_keyboard: [
       [
         {
-          text: '➕ Добавить задачу',
+          text: '➕ Добавить',
           callback_data: 'todo:add',
           style: 'primary',
         },
         {
-          text: '✅ Завершить задачу',
+          text: '✅ Завершить',
           callback_data: 'todo:complete',
           style: 'success',
         },
       ],
       [
         {
-          text: '🗑 Удалить задачу',
+          text: '🗑 Удалить',
           callback_data: 'todo:delete',
           style: 'danger',
+        },
+        {
+          text: '↩ Главная',
+          callback_data: 'panel:home',
         },
       ],
     ],
   };
 }
 
-export async function getTodoView(userId, chatId) {
+function formatLegacy(settings, connection, mode, notice) {
+  const lines = [
+    '<b>REQUIEM // LEGACY</b>',
+    '',
+    `Режим активации: <b>${settings.activationMode === LegacyMode.MANUAL ? 'ручной' : 'dead-man'}</b>`,
+    `Статус: ${legacyStateLabel(settings)}`,
+    `Chat Automation: ${connectionLabel(connection)}`,
+    '',
+    `Интервал проверки: <b>${settings.heartbeatDays} дн.</b>`,
+  ];
+
+  if (settings.activationMode === LegacyMode.DEADMAN) {
+    lines.push(
+      `Последнее подтверждение: <b>${formatUtc(settings.lastAliveAt)}</b>`,
+      `Активация после: <b>${formatUtc(getLegacyExpiry(settings))}</b>`,
+    );
+  }
+
+  lines.push(
+    `Новый аккаунт: <b>${settings.newAccount ? escapeHtml(settings.newAccount) : 'не указан'}</b>`,
+  );
+
+  if (notice) lines.push('', `<i>${escapeHtml(notice)}</i>`);
+
+  if (mode === MODE_LEGACY_AWAIT_ACCOUNT) {
+    lines.push(
+      '',
+      '👤 <b>Новый аккаунт</b>',
+      'Отправь username следующим сообщением: <code>@username</code> или <code>t.me/username</code>.',
+    );
+  } else if (!connection) {
+    lines.push(
+      '',
+      '<i>Чтобы автоответ работал от имени профиля, подключи Requiem в Telegram → Chat Automation и выдай право отвечать.</i>',
+    );
+  } else if (!connection.canReply) {
+    lines.push(
+      '',
+      '<i>Подключение найдено, но Telegram не дал Requiem право отвечать от имени профиля.</i>',
+    );
+  }
+
+  return lines.join('\n');
+}
+
+function legacyKeyboard(settings, mode) {
+  if (mode === MODE_LEGACY_AWAIT_ACCOUNT) {
+    return {
+      inline_keyboard: [
+        [
+          {
+            text: '🧹 Очистить поле',
+            callback_data: 'legacy:account_clear',
+            style: 'danger',
+          },
+        ],
+        [{ text: '↩ Отмена', callback_data: 'legacy:cancel' }],
+      ],
+    };
+  }
+
+  const modeButton = {
+    text: settings.activationMode === LegacyMode.MANUAL
+      ? '🔁 Режим: ручной'
+      : '🔁 Режим: dead-man',
+    callback_data: 'legacy:mode',
+    style: 'primary',
+  };
+
+  const stateButton = settings.activationMode === LegacyMode.MANUAL
+    ? {
+        text: settings.manualActive ? '⏹ Отключить автоответ' : '▶ Включить автоответ',
+        callback_data: 'legacy:manual_toggle',
+        style: settings.manualActive ? 'danger' : 'success',
+      }
+    : {
+        text: `❤️ Я жив — +${settings.heartbeatDays} дн.`,
+        callback_data: 'legacy:renew',
+        style: 'success',
+      };
+
+  return {
+    inline_keyboard: [
+      [modeButton],
+      [stateButton],
+      [
+        {
+          text: `⏱ Интервал: ${settings.heartbeatDays} дн.`,
+          callback_data: 'legacy:interval',
+          style: 'primary',
+        },
+        {
+          text: '👤 Новый аккаунт',
+          callback_data: 'legacy:account',
+          style: 'primary',
+        },
+      ],
+      [{ text: '↩ Главная', callback_data: 'panel:home' }],
+    ],
+  };
+}
+
+export async function getDashboardView(userId, chatId) {
   return await db.select().from(todoViews)
     .where(and(eq(todoViews.userId, userId), eq(todoViews.chatId, chatId)))
     .get();
 }
 
-async function saveTodoView({ userId, chatId, messageId, mode }) {
-  const existing = await getTodoView(userId, chatId);
+async function saveDashboardView({
+  userId,
+  chatId,
+  messageId,
+  section,
+  mode,
+}) {
+  const existing = await getDashboardView(userId, chatId);
 
   if (existing) {
     await db.update(todoViews)
       .set({
         messageId,
+        section,
         mode,
         updatedAt: new Date(),
       })
@@ -166,6 +358,7 @@ async function saveTodoView({ userId, chatId, messageId, mode }) {
     userId,
     chatId,
     messageId,
+    section,
     mode,
   }).run();
 }
@@ -175,24 +368,41 @@ function isMessageNotModified(error) {
     && /message is not modified/i.test(error?.description ?? '');
 }
 
-function isStaleDashboard(error) {
+function shouldReplaceDashboard(error) {
   if (error?.code !== 400) return false;
-  const description = error?.description ?? '';
-  return /message to edit not found|message can't be edited/i.test(description);
+  return !isMessageNotModified(error);
 }
 
-export async function showTodoDashboard({
+export async function showDashboard({
   userId,
   chatId,
   targetMessageId = null,
+  section = null,
   mode = null,
   notice = null,
 }) {
-  const existing = await getTodoView(userId, chatId);
-  const resolvedMode = mode ?? existing?.mode ?? MODE_IDLE;
+  const existing = await getDashboardView(userId, chatId);
+  const resolvedSection = section ?? existing?.section ?? SECTION_HOME;
+  const resolvedMode = mode ?? MODE_IDLE;
+
+  const settings = await ensureLegacySettings(userId, chatId);
+  const connection = await getOwnerBusinessConnection(userId);
   const rows = await listTodos(userId, { includeDone: true, limit: 50 });
-  const text = formatDashboard(rows, resolvedMode, notice);
-  const replyMarkup = buildKeyboard(rows, resolvedMode);
+
+  let text;
+  let replyMarkup;
+
+  if (resolvedSection === SECTION_TODO) {
+    text = formatTodo(rows, resolvedMode, notice);
+    replyMarkup = todoKeyboard(rows, resolvedMode);
+  } else if (resolvedSection === SECTION_LEGACY) {
+    text = formatLegacy(settings, connection, resolvedMode, notice);
+    replyMarkup = legacyKeyboard(settings, resolvedMode);
+  } else {
+    text = formatHome(rows, settings, connection, notice);
+    replyMarkup = homeKeyboard();
+  }
+
   let messageId = targetMessageId ?? existing?.messageId ?? null;
 
   if (messageId) {
@@ -203,10 +413,11 @@ export async function showTodoDashboard({
         text,
         parse_mode: 'HTML',
         reply_markup: replyMarkup,
+        link_preview_options: { is_disabled: true },
       });
     } catch (error) {
       if (!isMessageNotModified(error)) {
-        if (!isStaleDashboard(error)) throw error;
+        if (!shouldReplaceDashboard(error)) throw error;
         messageId = null;
       }
     }
@@ -218,18 +429,27 @@ export async function showTodoDashboard({
       text,
       parse_mode: 'HTML',
       reply_markup: replyMarkup,
+      link_preview_options: { is_disabled: true },
     });
     messageId = message.message_id;
   }
 
-  await saveTodoView({
+  await saveDashboardView({
     userId,
     chatId,
     messageId,
+    section: resolvedSection,
     mode: resolvedMode,
   });
 
-  return { messageId, mode: resolvedMode, rows };
+  return {
+    messageId,
+    section: resolvedSection,
+    mode: resolvedMode,
+    rows,
+    settings,
+    connection,
+  };
 }
 
 export async function safeDeleteMessage(chatId, messageId) {
@@ -241,18 +461,27 @@ export async function safeDeleteMessage(chatId, messageId) {
       message_id: messageId,
     });
   } catch (error) {
-    console.warn('Could not delete message', {
-      chatId,
-      messageId,
-      code: error?.code,
-      description: error?.description,
-    });
+    if (error?.code !== 400 && error?.code !== 403) {
+      console.warn('Could not delete message', {
+        chatId,
+        messageId,
+        code: error?.code,
+        description: error?.description,
+      });
+    }
   }
 }
 
-export const TodoViewMode = {
+export const DashboardSection = {
+  HOME: SECTION_HOME,
+  TODO: SECTION_TODO,
+  LEGACY: SECTION_LEGACY,
+};
+
+export const DashboardMode = {
   IDLE: MODE_IDLE,
-  AWAIT_ADD: MODE_AWAIT_ADD,
-  COMPLETE: MODE_COMPLETE,
-  DELETE: MODE_DELETE,
+  TODO_AWAIT_ADD: MODE_TODO_AWAIT_ADD,
+  TODO_COMPLETE: MODE_TODO_COMPLETE,
+  TODO_DELETE: MODE_TODO_DELETE,
+  LEGACY_AWAIT_ACCOUNT: MODE_LEGACY_AWAIT_ACCOUNT,
 };
