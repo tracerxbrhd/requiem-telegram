@@ -483,7 +483,7 @@ function legacyFallback(settings, connection, mode, notice) {
   if (settings.activationMode === LegacyMode.DEADMAN) {
     lines.push(
       `❤️ <b>Последнее подтверждение:</b> ${escapeHtml(formatUtc(settings.lastAliveAt))}`,
-      `⌛ <b>Активация после:</b> ${escapeHtml(formatUtc(getLegacyExpiry(settings))}`,
+      `⌛ <b>Активация после:</b> ${escapeHtml(formatUtc(getLegacyExpiry(settings)))}`,
     );
   }
 
