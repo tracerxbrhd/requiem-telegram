@@ -11,6 +11,10 @@ Requiem now has one persistent control dashboard with two panels:
 
 Use `/start` to open the main dashboard. The bot keeps one dashboard message per user/chat and edits it in place.
 
+The dashboard, To-Do panel, Legacy panel and heartbeat reminders use Telegram Rich Messages when available: headings, dividers, compact tables, block quotations, footers and colored in-message buttons. All user-facing UI is localized to Russian. If Rich Messages are unavailable, Requiem falls back to formatted HTML + inline keyboards.
+
+Telegram Bot API supports replacing an existing rich message through `editMessageText(..., rich_message)`, so switching panels still edits the same persistent dashboard message.
+
 If the dashboard message was deleted together with the chat history, the next `/start` detects that the stored message is stale and creates a fresh dashboard instead of silently failing.
 
 Shortcuts:
@@ -70,7 +74,7 @@ Requiem first tries Telegram Bot API 10.x **Rich Messages** (`sendRichMessage`) 
 
 Telegram records the actual connected bot in business-message metadata (`sender_business_bot` / business connection metadata), but clients are not required to display that attribution prominently. Therefore Requiem also states inside the message that it was generated automatically and that the account owner did not type or send it manually.
 
-The dead-man version exposes a software heartbeat diagnostic. Once the dead-man timer has expired, the diagnostic can truthfully show `NO SIGNAL ≥24H` because the shortest supported heartbeat interval is 1 day. Manual mode is shown as `MANUAL OVERRIDE` instead of pretending that medical telemetry exists. Requiem is not connected to a physical biomonitor.
+The automatic-control version exposes a software life-status monitor. Once the timer has expired, the message can show `НЕТ СИГНАЛА ≥24 Ч` because the shortest supported heartbeat interval is 1 day. Manual mode is explicitly displayed as `РУЧНАЯ АКТИВАЦИЯ`. The footer clarifies that this is based on Requiem activity confirmations rather than a physical medical biomonitor.
 
 The message states that the profile owner is presumed dead and includes the configured new Telegram account when present. If the account field is empty, the message explicitly says that the user did not manage to configure it.
 
