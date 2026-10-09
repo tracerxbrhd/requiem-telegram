@@ -51,7 +51,6 @@ export default async function (message, ctx) {
     reply_parameters: {
       message_id: message.message_id,
     },
-    reply_markup: legacyReplyMarkup(),
   };
 
   try {
@@ -72,6 +71,7 @@ export default async function (message, ctx) {
       ...common,
       text: buildLegacyAutoReply(settings),
       parse_mode: 'HTML',
+      reply_markup: legacyReplyMarkup(),
       link_preview_options: { is_disabled: true },
     });
   }
