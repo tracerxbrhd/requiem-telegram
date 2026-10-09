@@ -25,7 +25,7 @@ async function answer(callbackQueryId, text = null) {
 async function assertDashboardCallback(callbackQuery, userId, chatId, messageId) {
   const view = await getDashboardView(userId, chatId);
   if (!view || view.messageId !== messageId) {
-    await answer(callbackQuery.id, 'Эта панель устарела. Используй /start.');
+    await answer(callbackQuery.id, '⚠️ Панель устарела. Отправьте /start.');
     return null;
   }
   return view;
@@ -40,13 +40,13 @@ export default async function (callbackQuery, ctx) {
   const messageId = callbackQuery.message?.message_id;
 
   if (!userId || !chatId || !messageId) {
-    await answer(callbackQuery.id, 'Эта кнопка больше недоступна.');
+    await answer(callbackQuery.id, '⚠️ Эта кнопка больше недоступна.');
     return;
   }
 
   if (data === 'legacy:renew_reminder') {
     await renewLegacyStatus(userId, chatId);
-    await answer(callbackQuery.id, 'Статус продлён.');
+    await answer(callbackQuery.id, '❤️ Статус подтверждён и продлён.');
 
     const view = await getDashboardView(userId, chatId);
     if (view?.messageId) {
@@ -189,7 +189,7 @@ export default async function (callbackQuery, ctx) {
     await setLegacyMode(userId, nextMode, chatId);
     await answer(
       callbackQuery.id,
-      nextMode === LegacyMode.DEADMAN ? 'Dead-man режим включён.' : 'Ручной режим включён.',
+      nextMode === LegacyMode.DEADMAN ? '⏳ Режим автоконтроля включён.' : '🧪 Ручной режим включён.',
     );
 
     await showDashboard({
@@ -206,7 +206,7 @@ export default async function (callbackQuery, ctx) {
     const settings = await toggleManualLegacy(userId, chatId);
     await answer(
       callbackQuery.id,
-      settings.manualActive ? 'Автоответ активирован.' : 'Автоответ отключён.',
+      settings.manualActive ? '🚨 Автоответ активирован.' : '🟢 Автоответ отключён.',
     );
 
     await showDashboard({
@@ -235,7 +235,7 @@ export default async function (callbackQuery, ctx) {
 
   if (data === 'legacy:interval') {
     const settings = await cycleHeartbeat(userId, chatId);
-    await answer(callbackQuery.id, `Интервал: ${settings.heartbeatDays} дн.`);
+    await answer(callbackQuery.id, `⏱ Период контроля: ${settings.heartbeatDays} дн.`);
 
     await showDashboard({
       userId,
@@ -261,7 +261,7 @@ export default async function (callbackQuery, ctx) {
 
   if (data === 'legacy:account_clear') {
     await setNewAccount(userId, null, chatId);
-    await answer(callbackQuery.id, 'Новый аккаунт очищен.');
+    await answer(callbackQuery.id, '🧹 Резервный аккаунт очищен.');
 
     await showDashboard({
       userId,
@@ -285,5 +285,5 @@ export default async function (callbackQuery, ctx) {
     return;
   }
 
-  await answer(callbackQuery.id, 'Неизвестное действие.');
+  await answer(callbackQuery.id, '⚠️ Неизвестное действие.');
 }
