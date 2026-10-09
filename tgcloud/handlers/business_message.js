@@ -16,6 +16,7 @@ export default async function (message, ctx) {
 
   if (!connectionId || !chatId || !senderId) return;
   if (message.chat?.type !== 'private') return;
+  if (message.from?.is_bot) return;
 
   const connection = await ensureBusinessConnection(connectionId);
   if (!connection?.enabled || !connection.canReply) return;
