@@ -1,10 +1,12 @@
 import { api } from 'sdk';
 import {
   buildLegacyAutoReply,
+  buildLegacyRichMessage,
   ensureBusinessConnection,
   ensureLegacySettings,
   hasLegacyNotification,
   isLegacyActive,
+  legacyReplyMarkup,
   maybeSendHeartbeatReminder,
   recordLegacyNotification,
 } from '../lib/legacy.js';
@@ -43,13 +45,36 @@ export default async function (message, ctx) {
   if (!isLegacyActive(settings)) return;
   if (await hasLegacyNotification(connection.ownerUserId, chatId)) return;
 
-  await api.sendMessage({
+  const common = {
     business_connection_id: connectionId,
     chat_id: chatId,
-    text: buildLegacyAutoReply(settings),
-    parse_mode: 'HTML',
-    link_preview_options: { is_disabled: true },
-  });
+    reply_parameters: {
+      message_id: message.message_id,
+    },
+    reply_markup: legacyReplyMarkup(),
+  };
+
+  try {
+    await api.sendRichMessage({
+      ...common,
+      rich_message: buildLegacyRichMessage(settings),
+    });
+  } catch (error) {
+    console.warn('Rich Legacy message unavailable; falling back to formatted text', {
+      ownerUserId: connection.ownerUserId,
+      chatId,
+      code: error?.code,
+      description: error?.description,
+      message: error?.message,
+    });
+
+    await api.sendMessage({
+      ...common,
+      text: buildLegacyAutoReply(settings),
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true },
+    });
+  }
 
   await recordLegacyNotification(
     connection.ownerUserId,
