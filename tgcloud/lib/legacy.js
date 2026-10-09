@@ -331,33 +331,114 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-export function buildLegacyAutoReply(settings) {
-  const lines = [
-    '<b>⚠️ REQUIEM // АВТОМАТИЧЕСКОЕ СООБЩЕНИЕ</b>',
-    '',
-    'Если вы получили это сообщение, владелец данного профиля <b>предположительно мёртв</b>.',
-    '',
-  ];
-
-  if (settings?.newAccount) {
-    const username = settings.newAccount.replace(/^@/, '');
-    lines.push(
-      `<b>Новый аккаунт:</b> <a href="https://t.me/${escapeHtml(username)}">${escapeHtml(settings.newAccount)}</a>`,
-    );
-  } else {
-    lines.push(
-      '<b>Новый аккаунт:</b> не указан',
-      'Пользователь не успел настроить это поле до активации Requiem.',
-    );
+function legacyHeartbeatDiagnostic(settings, at = now()) {
+  if (settings?.activationMode !== LegacyMode.DEADMAN) {
+    return {
+      code: 'MANUAL OVERRIDE',
+      detail: 'Legacy-протокол активирован вручную.',
+    };
   }
 
-  lines.push(
+  const lastAliveAt = settings?.lastAliveAt instanceof Date
+    ? settings.lastAliveAt
+    : new Date(settings?.lastAliveAt ?? 0);
+  const elapsedMs = Math.max(0, at.getTime() - lastAliveAt.getTime());
+
+  return {
+    code: elapsedMs >= DAY_MS ? 'NO SIGNAL ≥24H' : 'NO CURRENT SIGNAL',
+    detail: elapsedMs >= DAY_MS
+      ? `Контрольный сигнал Requiem не подтверждался ${formatDuration(elapsedMs)}.`
+      : 'Контрольный сигнал Requiem не подтверждён.',
+  };
+}
+
+function legacyAccountHtml(settings) {
+  if (!settings?.newAccount) {
+    return {
+      rich: '<code>NOT CONFIGURED</code>',
+      fallback: '<b>Новый аккаунт:</b> не указан\nПользователь не успел настроить это поле до активации Requiem.',
+    };
+  }
+
+  const username = settings.newAccount.replace(/^@/, '');
+  const linked = `<a href="https://t.me/${escapeHtml(username)}">${escapeHtml(settings.newAccount)}</a>`;
+
+  return {
+    rich: linked,
+    fallback: `<b>Новый аккаунт:</b> ${linked}`,
+  };
+}
+
+export function buildLegacyRichMessage(settings) {
+  const heartbeat = legacyHeartbeatDiagnostic(settings);
+  const account = legacyAccountHtml(settings);
+
+  const heartbeatNarrative = settings?.activationMode === LegacyMode.DEADMAN
+    ? `${heartbeat.detail} Порог автоматической проверки превышен, поэтому Requiem активировал Legacy-протокол.`
+    : 'Legacy-протокол был активирован заранее в ручном режиме.';
+
+  const accountNote = settings?.newAccount
+    ? '<p>Для дальнейшей связи владелец оставил резервный Telegram-аккаунт.</p>'
+    : '<p><b>Резервный аккаунт отсутствует.</b> Пользователь не успел настроить это поле до активации Requiem.</p>';
+
+  return {
+    html: [
+      '<h2>⚠️ REQUIEM // LEGACY PROTOCOL</h2>',
+      '<p><mark>AUTOMATED TRANSMISSION</mark> <code>NOT SENT MANUALLY</code></p>',
+      '<hr/>',
+      '<table bordered compact>',
+      '<tr><th>КОНТУР</th><th>СТАТУС</th></tr>',
+      `<tr><td>REQUIEM HEARTBEAT</td><td><code>${escapeHtml(heartbeat.code)}</code></td></tr>`,
+      '<tr><td>PROFILE OWNER</td><td><code>PRESUMED DEAD</code></td></tr>',
+      `<tr><td>FALLBACK ACCOUNT</td><td>${account.rich}</td></tr>`,
+      '<tr><td>MESSAGE SOURCE</td><td><a href="https://t.me/uwdrequiembot">@uwdrequiembot</a></td></tr>',
+      '</table>',
+      '<blockquote>',
+      `${escapeHtml(heartbeatNarrative)}<br><br>`,
+      'Если вы получили это сообщение, владелец данного профиля <b>предположительно мёртв</b>.',
+      '<cite>Requiem Legacy Protocol</cite>',
+      '</blockquote>',
+      accountNote,
+      '<hr/>',
+      '<footer>Сообщение сформировано автоматически @uwdrequiembot через Telegram Chat Automation. Владелец профиля не вводил и не отправлял его вручную. Статус не является медицинским подтверждением смерти.</footer>',
+      '<tg-button-row align="left">',
+      '<tg-button type="url" style="primary" url="https://t.me/uwdrequiembot">🤖 Открыть Requiem</tg-button>',
+      '</tg-button-row>',
+    ].join('\n'),
+    skip_entity_detection: false,
+  };
+}
+
+export function buildLegacyAutoReply(settings) {
+  const heartbeat = legacyHeartbeatDiagnostic(settings);
+  const account = legacyAccountHtml(settings);
+  const lines = [
+    '<b>⚠️ REQUIEM // LEGACY PROTOCOL</b>',
+    '<code>AUTOMATED TRANSMISSION · NOT SENT MANUALLY</code>',
     '',
-    '<i>Сообщение отправлено автоматически системой Requiem. Оно не является подтверждением факта смерти.</i>',
-    '<b>Система:</b> <a href="https://t.me/uwdrequiembot">@uwdrequiembot</a>',
-  );
+    `<b>REQUIEM HEARTBEAT:</b> <code>${escapeHtml(heartbeat.code)}</code>`,
+    '<b>PROFILE OWNER:</b> <code>PRESUMED DEAD</code>',
+    '',
+    `<blockquote>${escapeHtml(heartbeat.detail)}\n\nЕсли вы получили это сообщение, владелец данного профиля <b>предположительно мёртв</b>.</blockquote>`,
+    '',
+    account.fallback,
+    '',
+    '<i>Сообщение сформировано автоматически @uwdrequiembot через Telegram Chat Automation. Владелец профиля не вводил и не отправлял его вручную. Статус не является медицинским подтверждением смерти.</i>',
+  ];
 
   return lines.join('\n');
+}
+
+export function legacyReplyMarkup() {
+  return {
+    inline_keyboard: [[
+      {
+        text: '🤖 Открыть Requiem',
+        url: 'https://t.me/uwdrequiembot',
+        style: 'primary',
+      },
+    ]],
+  };
 }
 
 function reminderLeadMs(days) {
