@@ -5,6 +5,7 @@ import { listTodos } from './todos.js';
 
 const MODE_IDLE = 'idle';
 const MODE_AWAIT_ADD = 'await_add';
+const MODE_COMPLETE = 'complete';
 const MODE_DELETE = 'delete';
 
 function escapeHtml(value) {
@@ -52,6 +53,8 @@ function formatDashboard(rows, mode, notice) {
 
   if (mode === MODE_AWAIT_ADD) {
     lines.push('', '➕ <b>Новая задача</b>', 'Отправь текст задачи следующим сообщением.');
+  } else if (mode === MODE_COMPLETE) {
+    lines.push('', '✅ <b>Завершение</b>', 'Выбери активную задачу кнопкой ниже.');
   } else if (mode === MODE_DELETE) {
     lines.push('', '🗑 <b>Удаление</b>', 'Выбери задачу кнопкой ниже.');
   }
@@ -68,13 +71,43 @@ function buildKeyboard(rows, mode) {
     };
   }
 
+  if (mode === MODE_COMPLETE) {
+    const active = rows.filter((todo) => !todo.done);
+    const taskButtons = active.slice(0, 20).map((todo) => ([
+      {
+        text: `✅ #${todo.id} ${compactButtonText(todo.text)}`,
+        callback_data: `todo:done:${todo.id}`,
+        style: 'success',
+      },
+    ]));
+
+    if (active.length === 0) {
+      taskButtons.push([
+        { text: 'Нет активных задач', callback_data: 'todo:noop' },
+      ]);
+    }
+
+    taskButtons.push([
+      { text: '↩ Назад', callback_data: 'todo:cancel' },
+    ]);
+
+    return { inline_keyboard: taskButtons };
+  }
+
   if (mode === MODE_DELETE) {
     const taskButtons = rows.slice(0, 20).map((todo) => ([
       {
         text: `🗑 #${todo.id} ${compactButtonText(todo.text)}`,
         callback_data: `todo:del:${todo.id}`,
+        style: 'danger',
       },
     ]));
+
+    if (rows.length === 0) {
+      taskButtons.push([
+        { text: 'Задач нет', callback_data: 'todo:noop' },
+      ]);
+    }
 
     taskButtons.push([
       { text: '↩ Назад', callback_data: 'todo:cancel' },
@@ -84,10 +117,27 @@ function buildKeyboard(rows, mode) {
   }
 
   return {
-    inline_keyboard: [[
-      { text: '➕ Добавить задачу', callback_data: 'todo:add' },
-      { text: '🗑 Удалить задачу', callback_data: 'todo:delete' },
-    ]],
+    inline_keyboard: [
+      [
+        {
+          text: '➕ Добавить задачу',
+          callback_data: 'todo:add',
+          style: 'primary',
+        },
+        {
+          text: '✅ Завершить задачу',
+          callback_data: 'todo:complete',
+          style: 'success',
+        },
+      ],
+      [
+        {
+          text: '🗑 Удалить задачу',
+          callback_data: 'todo:delete',
+          style: 'danger',
+        },
+      ],
+    ],
   };
 }
 
@@ -203,5 +253,6 @@ export async function safeDeleteMessage(chatId, messageId) {
 export const TodoViewMode = {
   IDLE: MODE_IDLE,
   AWAIT_ADD: MODE_AWAIT_ADD,
+  COMPLETE: MODE_COMPLETE,
   DELETE: MODE_DELETE,
 };
