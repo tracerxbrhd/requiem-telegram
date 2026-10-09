@@ -1,0 +1,39 @@
+name: Requiem heartbeat reminders
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Explain missing token
+        if: ${{ env.TGCLOUD_TOKEN == '' }}
+        run: echo "TGCLOUD_TOKEN is not configured; reminder sweep skipped."
+
+      - name: Set up Node
+        if: ${{ env.TGCLOUD_TOKEN != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install CLI
+        if: ${{ env.TGCLOUD_TOKEN != '' }}
+        run: npm ci
+
+      - name: Run reminder sweep
+        if: ${{ env.TGCLOUD_TOKEN != '' }}
+        run: npx tgcloud run endpoints/heartbeatTick '{}'
