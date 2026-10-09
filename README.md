@@ -64,7 +64,13 @@ If the timer expires, the next eligible incoming Chat Automation message can tri
 
 ### Legacy auto-reply
 
-The response is sent through `business_connection_id`, so Telegram sends it on behalf of the connected user profile rather than as the bot.
+The response is sent through `business_connection_id`, so Telegram sends it on behalf of the connected user profile rather than as a normal bot message.
+
+Requiem first tries Telegram Bot API 10.x **Rich Messages** (`sendRichMessage`) and falls back to formatted HTML if rich messages are unavailable for the connected account. The Rich Message uses a heading, divider, compact status table, quotation block, footer, and a direct button to `@uwdrequiembot`. It is also sent as a reply to the triggering incoming message.
+
+Telegram records the actual connected bot in business-message metadata (`sender_business_bot` / business connection metadata), but clients are not required to display that attribution prominently. Therefore Requiem also states inside the message that it was generated automatically and that the account owner did not type or send it manually.
+
+The dead-man version exposes a software heartbeat diagnostic. Once the dead-man timer has expired, the diagnostic can truthfully show `NO SIGNAL ≥24H` because the shortest supported heartbeat interval is 1 day. Manual mode is shown as `MANUAL OVERRIDE` instead of pretending that medical telemetry exists. Requiem is not connected to a physical biomonitor.
 
 The message states that the profile owner is presumed dead and includes the configured new Telegram account when present. If the account field is empty, the message explicitly says that the user did not manage to configure it.
 
