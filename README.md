@@ -2,18 +2,32 @@
 
 Experimental Telegram bot running entirely on Telegram Serverless.
 
-## MVP
+## To-Do dashboard
 
-Current goal: a small persistent To-Do bot that later also accepts tasks through Telegram Chat Automation.
+`/todo` opens a persistent dashboard instead of producing a new bot message for every action.
 
-Commands:
+The dashboard:
 
-- `/start` / `/help` — show help
-- `/add <task>` — create a task
-- `/todo` — list active tasks
-- `/todo all` — list active and completed tasks
+- keeps active tasks at the top;
+- moves completed tasks to the bottom and strikes them out;
+- uses colored inline controls: blue **Add task**, green **Complete task**, red **Delete task**;
+- edits the same Telegram message after add / complete / delete operations;
+- stores the dashboard message and UI mode in the Telegram Serverless database.
+
+When **Add task** is pressed, the next text message is consumed as the new task, removed from the chat when possible, and the dashboard is refreshed.
+
+When **Complete task** is pressed, the keyboard temporarily becomes a green list of active tasks. Selecting one marks it complete and returns to the dashboard.
+
+When **Delete task** is pressed, the keyboard temporarily becomes a red list of tasks to delete.
+
+Commands remain available:
+
+- `/start`, `/help`, `/todo` — open or refresh the dashboard
+- `/add <task>` — add a task directly
+- `/add` — enter add mode
 - `/done <id>` — mark a task completed
-- `/delete <id>` — delete a task
+- `/delete <id>` — delete directly
+- `/delete` — enter delete mode
 
 ## Deploy
 
@@ -26,6 +40,8 @@ npx tgcloud status
 npx tgcloud push
 npx tgcloud migrate
 ```
+
+Database schema changes are deployed by `push` but are only applied by the separate `migrate` step.
 
 `.tgcloud/` contains local CLI state and credentials and is gitignored.
 

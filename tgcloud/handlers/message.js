@@ -1,15 +1,10 @@
-import { api } from 'sdk';
-import { addTodo, deleteTodo, listTodos, markTodoDone } from '../lib/todos.js';
-
-const HELP = [
-  'REQUIEM // TODO',
-  '',
-  '/add <задача> — добавить',
-  '/todo — активные задачи',
-  '/todo all — все задачи',
-  '/done <id> — выполнить',
-  '/delete <id> — удалить',
-].join('\n');
+import { addTodo, deleteTodo, markTodoDone } from '../lib/todos.js';
+import {
+  getTodoView,
+  safeDeleteMessage,
+  showTodoDashboard,
+  TodoViewMode,
+} from '../lib/todo-ui.js';
 
 function parseCommand(text) {
   const trimmed = text.trim();
@@ -28,108 +23,157 @@ function parseId(value) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-function compactText(value, max = 110) {
-  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
-}
-
-function formatTodos(rows, includeDone) {
-  if (rows.length === 0) {
-    return includeDone
-      ? 'REQUIEM // TODO\n\nЗадач пока нет.'
-      : 'REQUIEM // TODO\n\nАктивных задач нет.';
-  }
-
-  const lines = rows.map((todo) => {
-    const mark = todo.done ? '✓' : '○';
-    return `${mark} #${todo.id} ${compactText(todo.text)}`;
+async function refreshDashboard(userId, chatId, options = {}) {
+  return await showTodoDashboard({
+    userId,
+    chatId,
+    ...options,
   });
-
-  const suffix = rows.length >= 30
-    ? '\n\nПоказаны первые 30 задач.'
-    : '';
-
-  return `REQUIEM // TODO\n\n${lines.join('\n')}${suffix}`;
 }
 
-async function reply(chatId, text) {
-  await api.sendMessage({ chat_id: chatId, text });
+async function addFromMessage(message, userId, chatId, text, source) {
+  return await addTodo({
+    userId,
+    text,
+    source,
+    sourceChatId: chatId,
+    sourceMessageId: message.message_id,
+  });
 }
 
 export default async function (message, ctx) {
   if (!message?.chat?.id || !message?.from?.id || message.from.is_bot) return;
   if (typeof message.text !== 'string') return;
 
-  const command = parseCommand(message.text);
-  if (!command) return;
-
   const chatId = message.chat.id;
   const userId = message.from.id;
+  const view = await getTodoView(userId, chatId);
+  const command = parseCommand(message.text);
 
-  switch (command.name) {
-    case 'start':
-    case 'help':
-      await reply(chatId, HELP);
-      return;
+  if (!command) {
+    if (view?.mode !== TodoViewMode.AWAIT_ADD) return;
 
-    case 'add': {
-      if (!command.args) {
-        await reply(chatId, 'Использование: /add <задача>');
-        return;
-      }
-
-      try {
-        const todo = await addTodo({
-          userId,
-          text: command.args,
-          source: 'bot',
-          sourceChatId: chatId,
-          sourceMessageId: message.message_id,
+    try {
+      await addFromMessage(message, userId, chatId, message.text, 'dashboard');
+      await refreshDashboard(userId, chatId, {
+        targetMessageId: view.messageId,
+        mode: TodoViewMode.IDLE,
+      });
+    } catch (error) {
+      if (error?.message === 'TODO_TEXT_TOO_LONG') {
+        await refreshDashboard(userId, chatId, {
+          targetMessageId: view.messageId,
+          mode: TodoViewMode.AWAIT_ADD,
+          notice: 'Задача слишком длинная. Максимум 500 символов.',
         });
-        await reply(chatId, `Добавлено: #${todo.id} ${todo.text}`);
-      } catch (error) {
-        if (error?.message === 'TODO_TEXT_TOO_LONG') {
-          await reply(chatId, 'Задача слишком длинная. Максимум 500 символов.');
-          return;
-        }
+      } else {
         throw error;
       }
-      return;
+    } finally {
+      await safeDeleteMessage(chatId, message.message_id);
     }
+    return;
+  }
 
-    case 'todo': {
-      const includeDone = command.args.toLowerCase() === 'all';
-      if (command.args && !includeDone) {
-        await reply(chatId, 'Использование: /todo или /todo all');
+  try {
+    switch (command.name) {
+      case 'start':
+      case 'help':
+        await refreshDashboard(userId, chatId, {
+          mode: TodoViewMode.IDLE,
+        });
+        return;
+
+      case 'todo':
+        if (command.args && command.args.toLowerCase() !== 'all') {
+          await refreshDashboard(userId, chatId, {
+            mode: TodoViewMode.IDLE,
+            notice: 'Использование: /todo',
+          });
+          return;
+        }
+
+        await refreshDashboard(userId, chatId, {
+          mode: TodoViewMode.IDLE,
+        });
+        return;
+
+      case 'add': {
+        if (!command.args) {
+          await refreshDashboard(userId, chatId, {
+            mode: TodoViewMode.AWAIT_ADD,
+          });
+          return;
+        }
+
+        try {
+          await addFromMessage(message, userId, chatId, command.args, 'command');
+          await refreshDashboard(userId, chatId, {
+            mode: TodoViewMode.IDLE,
+          });
+        } catch (error) {
+          if (error?.message === 'TODO_TEXT_TOO_LONG') {
+            await refreshDashboard(userId, chatId, {
+              mode: TodoViewMode.AWAIT_ADD,
+              notice: 'Задача слишком длинная. Максимум 500 символов.',
+            });
+            return;
+          }
+          throw error;
+        }
         return;
       }
-      const rows = await listTodos(userId, { includeDone });
-      await reply(chatId, formatTodos(rows, includeDone));
-      return;
-    }
 
-    case 'done': {
-      const id = parseId(command.args);
-      if (!id) {
-        await reply(chatId, 'Использование: /done <id>');
+      case 'done': {
+        const id = parseId(command.args);
+        if (!id) {
+          await refreshDashboard(userId, chatId, {
+            mode: TodoViewMode.IDLE,
+            notice: 'Использование: /done <id>',
+          });
+          return;
+        }
+
+        const todo = await markTodoDone(userId, id);
+        await refreshDashboard(userId, chatId, {
+          mode: TodoViewMode.IDLE,
+          notice: todo ? null : `Активная задача #${id} не найдена.`,
+        });
         return;
       }
-      const todo = await markTodoDone(userId, id);
-      await reply(chatId, todo ? `Готово: #${todo.id} ${todo.text}` : `Активная задача #${id} не найдена.`);
-      return;
-    }
 
-    case 'delete': {
-      const id = parseId(command.args);
-      if (!id) {
-        await reply(chatId, 'Использование: /delete <id>');
+      case 'delete': {
+        if (!command.args) {
+          await refreshDashboard(userId, chatId, {
+            mode: TodoViewMode.DELETE,
+          });
+          return;
+        }
+
+        const id = parseId(command.args);
+        if (!id) {
+          await refreshDashboard(userId, chatId, {
+            mode: TodoViewMode.DELETE,
+            notice: 'Использование: /delete <id>',
+          });
+          return;
+        }
+
+        const todo = await deleteTodo(userId, id);
+        await refreshDashboard(userId, chatId, {
+          mode: TodoViewMode.IDLE,
+          notice: todo ? null : `Задача #${id} не найдена.`,
+        });
         return;
       }
-      const todo = await deleteTodo(userId, id);
-      await reply(chatId, todo ? `Удалено: #${todo.id} ${todo.text}` : `Задача #${id} не найдена.`);
-      return;
-    }
 
-    default:
-      await reply(chatId, `Не знаю команду /${command.name}.\n\n${HELP}`);
+      default:
+        await refreshDashboard(userId, chatId, {
+          mode: TodoViewMode.IDLE,
+          notice: `Неизвестная команда /${command.name}.`,
+        });
+    }
+  } finally {
+    await safeDeleteMessage(chatId, message.message_id);
   }
 }

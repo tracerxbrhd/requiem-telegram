@@ -30,14 +30,14 @@ export async function addTodo({
   return rows[0] ?? null;
 }
 
-export async function listTodos(userId, { includeDone = false, limit = 30 } = {}) {
+export async function listTodos(userId, { includeDone = true, limit = 50 } = {}) {
   const where = includeDone
     ? eq(todos.userId, userId)
     : and(eq(todos.userId, userId), eq(todos.done, false));
 
   return await db.select().from(todos)
     .where(where)
-    .orderBy(asc(todos.id))
+    .orderBy(asc(todos.done), asc(todos.id))
     .limit(limit)
     .all();
 }
