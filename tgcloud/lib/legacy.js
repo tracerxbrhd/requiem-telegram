@@ -334,8 +334,8 @@ function escapeHtml(value) {
 function legacyHeartbeatDiagnostic(settings, at = now()) {
   if (settings?.activationMode !== LegacyMode.DEADMAN) {
     return {
-      code: 'MANUAL OVERRIDE',
-      detail: 'Legacy-протокол активирован вручную.',
+      code: 'РУЧНАЯ АКТИВАЦИЯ',
+      detail: 'Протокол наследия активирован вручную в тестовом режиме.',
     };
   }
 
@@ -345,18 +345,20 @@ function legacyHeartbeatDiagnostic(settings, at = now()) {
   const elapsedMs = Math.max(0, at.getTime() - lastAliveAt.getTime());
 
   return {
-    code: elapsedMs >= DAY_MS ? 'NO SIGNAL ≥24H' : 'NO CURRENT SIGNAL',
+    code: elapsedMs >= DAY_MS
+      ? 'НЕТ СИГНАЛА ≥24 Ч'
+      : 'СИГНАЛ НЕ ПОДТВЕРЖДЁН',
     detail: elapsedMs >= DAY_MS
-      ? `Контрольный сигнал Requiem не подтверждался ${formatDuration(elapsedMs)}.`
-      : 'Контрольный сигнал Requiem не подтверждён.',
+      ? `Requiem не получал контрольного подтверждения жизненного статуса пользователя ${formatDuration(elapsedMs)}.`
+      : 'Контрольное подтверждение жизненного статуса пользователя отсутствует.',
   };
 }
 
 function legacyAccountHtml(settings) {
   if (!settings?.newAccount) {
     return {
-      rich: '<code>NOT CONFIGURED</code>',
-      fallback: '<b>Новый аккаунт:</b> не указан\nПользователь не успел настроить это поле до активации Requiem.',
+      rich: '<code>НЕ НАСТРОЕН</code>',
+      fallback: '<b>📡 Резервный аккаунт:</b> не указан\nПользователь не успел настроить это поле до активации Requiem.',
     };
   }
 
@@ -365,7 +367,7 @@ function legacyAccountHtml(settings) {
 
   return {
     rich: linked,
-    fallback: `<b>Новый аккаунт:</b> ${linked}`,
+    fallback: `<b>📡 Резервный аккаунт:</b> ${linked}`,
   };
 }
 
@@ -374,33 +376,33 @@ export function buildLegacyRichMessage(settings) {
   const account = legacyAccountHtml(settings);
 
   const heartbeatNarrative = settings?.activationMode === LegacyMode.DEADMAN
-    ? `${heartbeat.detail} Порог автоматической проверки превышен, поэтому Requiem активировал Legacy-протокол.`
-    : 'Legacy-протокол был активирован заранее в ручном режиме.';
+    ? `${heartbeat.detail} Порог автоматической проверки превышен — Requiem активировал протокол наследия.`
+    : 'Протокол наследия был активирован заранее в ручном режиме. Это тестовая активация, а не результат истечения таймера.';
 
   const accountNote = settings?.newAccount
-    ? '<p>Для дальнейшей связи владелец оставил резервный Telegram-аккаунт.</p>'
-    : '<p><b>Резервный аккаунт отсутствует.</b> Пользователь не успел настроить это поле до активации Requiem.</p>';
+    ? '<p>📡 Для дальнейшей связи владелец оставил резервный Telegram-аккаунт.</p>'
+    : '<p>📡 <b>Резервный аккаунт отсутствует.</b> Пользователь не успел настроить это поле до активации Requiem.</p>';
 
   return {
     html: [
-      '<h2>⚠️ REQUIEM // LEGACY PROTOCOL</h2>',
-      '<p><mark>AUTOMATED TRANSMISSION</mark> <code>NOT SENT MANUALLY</code></p>',
+      '<h2>⚠️ REQUIEM // ПРОТОКОЛ НАСЛЕДИЯ</h2>',
+      '<p><mark>🤖 АВТОМАТИЧЕСКАЯ ПЕРЕДАЧА</mark> <code>НЕ ОТПРАВЛЕНО ВРУЧНУЮ</code></p>',
       '<hr/>',
       '<table bordered compact>',
       '<tr><th>КОНТУР</th><th>СТАТУС</th></tr>',
-      `<tr><td>REQUIEM HEARTBEAT</td><td><code>${escapeHtml(heartbeat.code)}</code></td></tr>`,
-      '<tr><td>PROFILE OWNER</td><td><code>PRESUMED DEAD</code></td></tr>',
-      `<tr><td>FALLBACK ACCOUNT</td><td>${account.rich}</td></tr>`,
-      '<tr><td>MESSAGE SOURCE</td><td><a href="https://t.me/uwdrequiembot">@uwdrequiembot</a></td></tr>',
+      `<tr><td>🫀 Монитор жизненного статуса</td><td><code>${escapeHtml(heartbeat.code)}</code></td></tr>`,
+      '<tr><td>👤 Владелец профиля</td><td><code>ПРЕДПОЛОЖИТЕЛЬНО МЁРТВ</code></td></tr>',
+      `<tr><td>📡 Резервный аккаунт</td><td>${account.rich}</td></tr>`,
+      '<tr><td>🤖 Источник сообщения</td><td><a href="https://t.me/uwdrequiembot">@uwdrequiembot</a></td></tr>',
       '</table>',
       '<blockquote>',
       `${escapeHtml(heartbeatNarrative)}<br><br>`,
       'Если вы получили это сообщение, владелец данного профиля <b>предположительно мёртв</b>.',
-      '<cite>Requiem Legacy Protocol</cite>',
+      '<cite>Протокол наследия Requiem</cite>',
       '</blockquote>',
       accountNote,
       '<hr/>',
-      '<footer>Сообщение сформировано автоматически @uwdrequiembot через Telegram Chat Automation. Владелец профиля не вводил и не отправлял его вручную. Статус не является медицинским подтверждением смерти.</footer>',
+      '<footer>Сообщение сформировано автоматически системой @uwdrequiembot через Telegram Chat Automation. Владелец профиля не вводил и не отправлял его вручную. «Монитор жизненного статуса» Requiem основан на контрольных подтверждениях активности и не является медицинским устройством или подтверждением смерти.</footer>',
       '<tg-button-row align="left">',
       '<tg-button type="url" style="primary" url="https://t.me/uwdrequiembot">🤖 Открыть Requiem</tg-button>',
       '</tg-button-row>',
@@ -413,17 +415,17 @@ export function buildLegacyAutoReply(settings) {
   const heartbeat = legacyHeartbeatDiagnostic(settings);
   const account = legacyAccountHtml(settings);
   const lines = [
-    '<b>⚠️ REQUIEM // LEGACY PROTOCOL</b>',
-    '<code>AUTOMATED TRANSMISSION · NOT SENT MANUALLY</code>',
+    '<b>⚠️ REQUIEM // ПРОТОКОЛ НАСЛЕДИЯ</b>',
+    '<code>🤖 АВТОМАТИЧЕСКАЯ ПЕРЕДАЧА · НЕ ОТПРАВЛЕНО ВРУЧНУЮ</code>',
     '',
-    `<b>REQUIEM HEARTBEAT:</b> <code>${escapeHtml(heartbeat.code)}</code>`,
-    '<b>PROFILE OWNER:</b> <code>PRESUMED DEAD</code>',
+    `<b>🫀 Монитор жизненного статуса:</b> <code>${escapeHtml(heartbeat.code)}</code>`,
+    '<b>👤 Владелец профиля:</b> <code>ПРЕДПОЛОЖИТЕЛЬНО МЁРТВ</code>',
     '',
     `<blockquote>${escapeHtml(heartbeat.detail)}\n\nЕсли вы получили это сообщение, владелец данного профиля <b>предположительно мёртв</b>.</blockquote>`,
     '',
     account.fallback,
     '',
-    '<i>Сообщение сформировано автоматически @uwdrequiembot через Telegram Chat Automation. Владелец профиля не вводил и не отправлял его вручную. Статус не является медицинским подтверждением смерти.</i>',
+    '<i>🤖 Сообщение сформировано автоматически @uwdrequiembot через Telegram Chat Automation. Владелец профиля не вводил и не отправлял его вручную. Контроль Requiem основан на подтверждениях активности и не является медицинским подтверждением смерти.</i>',
   ];
 
   return lines.join('\n');
@@ -451,23 +453,66 @@ function buildReminderText(settings, at = now()) {
 
   if (remaining <= 0) {
     return [
-      '<b>⚠️ REQUIEM // СТАТУС ИСТЁК</b>',
+      '<b>🚨 REQUIEM // СТАТУС ИСТЁК</b>',
       '',
-      `Dead-man режим активирован: прошло больше <b>${interval} дн.</b> с последнего подтверждения.`,
-      'При следующем входящем сообщении в управляемом чате Requiem сможет отправить автоматический ответ от вашего имени.',
+      `🫀 Контрольное подтверждение не получено в течение <b>${interval} дн.</b>`,
+      'Протокол наследия активирован. При следующем подходящем входящем сообщении Requiem сможет отправить автоматический ответ от вашего имени.',
       '',
       'Если вы на связи — подтвердите статус.',
     ].join('\n');
   }
 
   return [
-    '<b>⏳ REQUIEM // ПРОДЛЕНИЕ СТАТУСА</b>',
+    '<b>⏳ REQUIEM // ТРЕБУЕТСЯ ПОДТВЕРЖДЕНИЕ</b>',
     '',
-    `До активации dead-man режима осталось примерно <b>${formatDuration(remaining)}</b>.`,
-    `Текущий интервал: <b>${interval} дн.</b>`,
+    `🫀 До активации протокола осталось примерно <b>${formatDuration(remaining)}</b>.`,
+    `⏱ Период контроля: <b>${interval} дн.</b>`,
     '',
     'Подтвердите, что вы на связи, чтобы отсчёт начался заново.',
   ].join('\n');
+}
+
+function buildReminderRichMessage(settings, at = now()) {
+  const remaining = getRemainingMs(settings, at);
+  const interval = normalizeHeartbeatDays(settings.heartbeatDays);
+  const expired = remaining <= 0;
+
+  return {
+    html: [
+      expired
+        ? '<h2>🚨 REQUIEM // СТАТУС ИСТЁК</h2>'
+        : '<h2>⏳ REQUIEM // ПОДТВЕРЖДЕНИЕ СТАТУСА</h2>',
+      '<p><mark>🫀 КОНТРОЛЬ ЖИЗНЕННОГО СТАТУСА</mark></p>',
+      '<hr/>',
+      '<table bordered compact>',
+      '<tr><th>ПАРАМЕТР</th><th>ЗНАЧЕНИЕ</th></tr>',
+      `<tr><td>⏱ Период контроля</td><td><b>${interval} дн.</b></td></tr>`,
+      expired
+        ? '<tr><td>🚨 Состояние</td><td><code>СРОК ИСТЁК</code></td></tr>'
+        : `<tr><td>⌛ Осталось</td><td><b>~${escapeHtml(formatDuration(remaining))}</b></td></tr>`,
+      '</table>',
+      expired
+        ? '<blockquote>Контрольное подтверждение не получено вовремя. Протокол наследия активирован. Если вы на связи — подтвердите статус сейчас.</blockquote>'
+        : '<blockquote>Requiem ожидает подтверждение активности. Нажмите кнопку ниже, чтобы начать новый период контроля.</blockquote>',
+      '<tg-button-row align="center">',
+      `<tg-button type="callback_data" style="success" data="legacy:renew_reminder">❤️ Я на связи · продлить на ${interval} дн.</tg-button>`,
+      '</tg-button-row>',
+      '<footer>🕯 Requiem · контроль активности</footer>',
+    ].join('\n'),
+    skip_entity_detection: false,
+  };
+}
+
+function reminderReplyMarkup(settings) {
+  return {
+    inline_keyboard: [[
+      {
+        text: `❤️ Я на связи · продлить на ${normalizeHeartbeatDays(settings.heartbeatDays)} дн.`,
+        callback_data: 'legacy:renew_reminder',
+        style: 'success',
+      },
+    ]],
+  };
 }
 
 export async function maybeSendHeartbeatReminder(settings, at = now()) {
@@ -477,20 +522,27 @@ export async function maybeSendHeartbeatReminder(settings, at = now()) {
   const remaining = getRemainingMs(settings, at);
   if (remaining > reminderLeadMs(settings.heartbeatDays)) return false;
 
-  const message = await api.sendMessage({
-    chat_id: settings.ownerChatId,
-    text: buildReminderText(settings, at),
-    parse_mode: 'HTML',
-    reply_markup: {
-      inline_keyboard: [[
-        {
-          text: `❤️ Я жив — продлить на ${normalizeHeartbeatDays(settings.heartbeatDays)} дн.`,
-          callback_data: 'legacy:renew_reminder',
-          style: 'success',
-        },
-      ]],
-    },
-  });
+  let message;
+  try {
+    message = await api.sendRichMessage({
+      chat_id: settings.ownerChatId,
+      rich_message: buildReminderRichMessage(settings, at),
+    });
+  } catch (error) {
+    console.warn('Rich heartbeat reminder unavailable; using HTML fallback', {
+      ownerUserId: settings.ownerUserId,
+      code: error?.code,
+      description: error?.description,
+      message: error?.message,
+    });
+
+    message = await api.sendMessage({
+      chat_id: settings.ownerChatId,
+      text: buildReminderText(settings, at),
+      parse_mode: 'HTML',
+      reply_markup: reminderReplyMarkup(settings),
+    });
+  }
 
   await db.update(legacySettings)
     .set({
