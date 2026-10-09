@@ -95,7 +95,7 @@ export default async function (message, ctx) {
           targetMessageId: view.messageId,
           section: DashboardSection.LEGACY,
           mode: DashboardMode.LEGACY_AWAIT_ACCOUNT,
-          notice: 'Не похоже на Telegram username. Используй @username или t.me/username.',
+          notice: 'Не удалось распознать имя пользователя Telegram. Используйте @username или t.me/username.',
         });
       }
     }
@@ -121,7 +121,7 @@ export default async function (message, ctx) {
         chatId,
         section: DashboardSection.HOME,
         mode: DashboardMode.IDLE,
-        notice: 'Выбери нужный раздел кнопками ниже.',
+        notice: 'Выберите нужный раздел кнопками ниже.',
       });
       return;
 
@@ -227,7 +227,7 @@ export default async function (message, ctx) {
         chatId,
         section: view?.section ?? DashboardSection.HOME,
         mode: DashboardMode.IDLE,
-        notice: `Неизвестная команда /${command.name}.`,
+        notice: `⚠️ Неизвестная команда /${command.name}.`,
       });
   }
 }
