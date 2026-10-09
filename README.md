@@ -10,13 +10,15 @@ The dashboard:
 
 - keeps active tasks at the top;
 - moves completed tasks to the bottom and strikes them out;
-- has inline **Add task** and **Delete task** buttons;
-- edits the same Telegram message after add / done / delete operations;
+- uses colored inline controls: blue **Add task**, green **Complete task**, red **Delete task**;
+- edits the same Telegram message after add / complete / delete operations;
 - stores the dashboard message and UI mode in the Telegram Serverless database.
 
 When **Add task** is pressed, the next text message is consumed as the new task, removed from the chat when possible, and the dashboard is refreshed.
 
-When **Delete task** is pressed, the keyboard temporarily becomes a list of tasks to delete.
+When **Complete task** is pressed, the keyboard temporarily becomes a green list of active tasks. Selecting one marks it complete and returns to the dashboard.
+
+When **Delete task** is pressed, the keyboard temporarily becomes a red list of tasks to delete.
 
 Commands remain available:
 
