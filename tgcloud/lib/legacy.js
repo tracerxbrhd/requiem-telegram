@@ -128,7 +128,12 @@ async function deleteReminderMessage(settings) {
       message_id: settings.reminderMessageId,
     });
   } catch (error) {
-    if (error?.code !== 400 && error?.code !== 403) throw error;
+    console.warn('Could not delete heartbeat reminder', {
+      ownerUserId: settings.ownerUserId,
+      code: error?.code,
+      description: error?.description,
+      message: error?.message,
+    });
   }
 }
 
