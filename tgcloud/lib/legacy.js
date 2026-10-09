@@ -354,6 +354,7 @@ export function buildLegacyAutoReply(settings) {
   lines.push(
     '',
     '<i>Сообщение отправлено автоматически системой Requiem. Оно не является подтверждением факта смерти.</i>',
+    '<b>Система:</b> <a href="https://t.me/uwdrequiembot">@uwdrequiembot</a>',
   );
 
   return lines.join('\n');
